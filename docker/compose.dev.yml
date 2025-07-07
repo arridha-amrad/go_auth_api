@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:latest
+    container_name: pg_go_api_dev
+    environment:
+      POSTGRES_USER: user_go_api_dev
+      POSTGRES_PASSWORD: pg_pwd_go_api_dev
+      POSTGRES_DB: pg_db_go_api_dev
+    volumes:
+      - pg_vol_go_api_dev_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - app_network
+    restart: unless-stopped
+
+  redis:
+    image: redis:latest
+    container_name: redis_go_api_dev
+    command: redis-server --requirepass redis123 --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_vol_go_api_dev_data:/data
+    networks:
+      - app_network
+    restart: unless-stopped
+
+volumes:
+  pg_vol_go_api_dev_data:
+  redis_vol_go_api_dev_data:
+
+networks:
+  app_network:
+    driver: bridge
