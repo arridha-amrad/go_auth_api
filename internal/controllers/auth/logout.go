@@ -22,20 +22,20 @@ func (ctrl *authController) Logout(c *gin.Context) {
 		return
 	}
 
-	tokenPayload, ok := value.(services.VerifyAccessTokenResult)
+	tokenPayload, ok := value.(services.AccessTokenData)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user id"})
 		return
 	}
 
-	if err := ctrl.tokenService.DeleteAccessToken(tokenPayload.Jti); err != nil {
+	if err := ctrl.redisService.DeleteAccessToken(tokenPayload.Jti); err != nil {
 		log.Println(err.Error() + " failed to delete access token")
 
 	}
 
-	hashedToken := ctrl.tokenService.HashWithSHA256(cookieRefToken)
+	hashedToken := ctrl.utils.HashWithSHA256(cookieRefToken)
 
-	err = ctrl.tokenService.DeleteRefreshToken(hashedToken)
+	err = ctrl.redisService.DeleteRefreshToken(hashedToken)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Something went wrong"})
 		return

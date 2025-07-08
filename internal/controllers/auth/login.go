@@ -43,7 +43,7 @@ func (ctrl *authController) Login(c *gin.Context) {
 		return
 	}
 
-	authToken, err := ctrl.tokenService.CreateAuthTokens(services.CreateAuthTokenParams{
+	authToken, err := ctrl.authService.CreateAuthTokens(services.CreateAuthTokenParams{
 		UserId:     user.ID,
 		JwtVersion: user.JwtVersion,
 	})

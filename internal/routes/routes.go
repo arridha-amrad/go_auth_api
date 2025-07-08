@@ -32,16 +32,25 @@ func RegisterRoutes(
 	redisRepo := repositories.NewRedisRepository(rdb)
 
 	// services
-	tokenServices := services.NewTokenService(redisRepo, config.JWtSecretKey)
+	redisService := services.NewRedisService(redisRepo)
+	jwtService := services.NewJwtService(config.JWtSecretKey, redisService)
+	authService := services.NewAuthService(redisService, utilities, jwtService)
 	userService := services.NewUserService(userRepo)
 	emailService := services.NewEmailService(config.AppUri, utilities)
 	passwordService := services.NewPasswordService()
 
 	userController := user.NewUserController(userService)
-	authController := auth.NewAuthController(passwordService, tokenServices, userService, emailService)
+	authController := auth.NewAuthController(
+		passwordService,
+		authService,
+		userService,
+		emailService,
+		redisService,
+		utilities,
+	)
 
 	validationMiddleware := middleware.NewValidationMiddleware(validate)
-	authMiddleware := middleware.NewAuthMiddleware(tokenServices, userService)
+	authMiddleware := middleware.NewAuthMiddleware(jwtService, userService)
 
 	router.SetTrustedProxies([]string{"127.0.0.1"})
 

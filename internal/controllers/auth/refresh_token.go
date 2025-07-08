@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 func (ctrl *authController) RefreshToken(c *gin.Context) {
@@ -17,26 +18,36 @@ func (ctrl *authController) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	data, err := ctrl.tokenService.GetRefreshToken(ctrl.tokenService.HashWithSHA256(cookieRefToken))
+	data, err := ctrl.redisService.GetRefreshToken(ctrl.utils.HashWithSHA256(cookieRefToken))
 	if err != nil {
 		log.Println(err.Error())
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
-	log.Println(data)
+	userId, err := uuid.Parse(data.UserId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-	user, err := ctrl.userService.GetUserById(c.Request.Context(), data.UserId)
+	oldJti, err := uuid.Parse(data.Jti)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := ctrl.userService.GetUserById(c.Request.Context(), userId)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
-	authToken, err := ctrl.tokenService.CreateAuthTokens(services.CreateAuthTokenParams{
-		UserId:      data.UserId,
+	authToken, err := ctrl.authService.CreateAuthTokens(services.CreateAuthTokenParams{
+		UserId:      userId,
 		JwtVersion:  user.JwtVersion,
 		OldRefToken: &cookieRefToken,
-		OldTokenJti: &data.Jti,
+		OldTokenJti: &oldJti,
 	})
 	if err != nil {
 		log.Println(err.Error())

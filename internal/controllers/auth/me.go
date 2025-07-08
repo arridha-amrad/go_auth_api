@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 func (ctrl *authController) GetAuth(c *gin.Context) {
@@ -16,14 +17,20 @@ func (ctrl *authController) GetAuth(c *gin.Context) {
 	}
 
 	// 2. Type assertion
-	tokenPayload, ok := value.(services.VerifyAccessTokenResult)
+	tokenPayload, ok := value.(services.JWTPayload)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token payload"})
 		return
 	}
 
+	userId, err := uuid.Parse(tokenPayload.UserId)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
 	// 3. Fetch user
-	user, err := ctrl.userService.GetUserById(c.Request.Context(), tokenPayload.UserId)
+	user, err := ctrl.userService.GetUserById(c.Request.Context(), userId)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "user not found"})
 		return

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"my-go-api/internal/services"
+	"my-go-api/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,21 +18,27 @@ type IAuthController interface {
 
 type authController struct {
 	userService     services.IUserService
-	tokenService    services.ITokenService
+	authService     services.IAuthService
 	emailService    services.IEmailService
 	passwordService services.IPasswordService
+	redisService    services.IRedisService
+	utils           utils.IUtils
 }
 
 func NewAuthController(
 	passwordService services.IPasswordService,
-	tokenService services.ITokenService,
+	authService services.IAuthService,
 	userService services.IUserService,
 	emailService services.IEmailService,
+	redisService services.IRedisService,
+	utils utils.IUtils,
 ) IAuthController {
 	return &authController{
 		userService:     userService,
+		redisService:    redisService,
 		passwordService: passwordService,
 		emailService:    emailService,
-		tokenService:    tokenService,
+		authService:     authService,
+		utils:           utils,
 	}
 }

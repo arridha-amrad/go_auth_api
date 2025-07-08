@@ -7,21 +7,22 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type authMiddleware struct {
-	tokenService services.ITokenService
-	userService  services.IUserService
+	userService services.IUserService
+	jwtService  services.IJwtService
 }
 
 type IAuthMiddleware interface {
 	Handler(c *gin.Context)
 }
 
-func NewAuthMiddleware(tokenService services.ITokenService, userService services.IUserService) IAuthMiddleware {
+func NewAuthMiddleware(jwtService services.IJwtService, userService services.IUserService) IAuthMiddleware {
 	return &authMiddleware{
-		tokenService: tokenService,
-		userService:  userService,
+		userService: userService,
+		jwtService:  jwtService,
 	}
 }
 
@@ -42,14 +43,21 @@ func (m *authMiddleware) Handler(c *gin.Context) {
 
 	tokenStr := strings.TrimSpace(strings.TrimPrefix(authorization, bearerPrefix))
 
-	payload, err := m.tokenService.VerifyAccessToken(tokenStr)
+	payload, err := m.jwtService.Verify(tokenStr)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		c.Abort()
 		return
 	}
 
-	user, err := m.userService.GetUserById(c.Request.Context(), payload.UserId)
+	userId, err := uuid.Parse(payload.UserId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.Abort()
+		return
+	}
+
+	user, err := m.userService.GetUserById(c.Request.Context(), userId)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		c.Abort()
