@@ -22,14 +22,15 @@ func (ctrl *authController) Logout(c *gin.Context) {
 		return
 	}
 
-	tokenPayload, ok := value.(services.TokenPayload)
+	tokenPayload, ok := value.(services.VerifyAccessTokenResult)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user id"})
 		return
 	}
 
 	if err := ctrl.tokenService.DeleteAccessToken(tokenPayload.Jti); err != nil {
-		log.Println(err.Error())
+		log.Println(err.Error() + " failed to delete access token")
+
 	}
 
 	hashedToken := ctrl.tokenService.HashWithSHA256(cookieRefToken)

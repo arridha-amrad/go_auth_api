@@ -41,7 +41,7 @@ func RegisterRoutes(
 	authController := auth.NewAuthController(passwordService, tokenServices, userService, emailService)
 
 	validationMiddleware := middleware.NewValidationMiddleware(validate)
-	authMiddleware := middleware.NewAuthMiddleware(tokenServices)
+	authMiddleware := middleware.NewAuthMiddleware(tokenServices, userService)
 
 	router.SetTrustedProxies([]string{"127.0.0.1"})
 

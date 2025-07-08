@@ -14,6 +14,6 @@ type User struct {
 	Role       string    `json:"role"`
 	CreatedAt  string    `json:"created_at"`
 	UpdatedAt  string    `json:"updated_at,omitempty"`
-	JwtVersion string    `json:"jwt_version"`
+	JwtVersion string    `json:"-"`
 	IsVerified bool      `json:"is_verified"`
 }

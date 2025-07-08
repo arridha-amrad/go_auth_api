@@ -21,7 +21,7 @@ func SetAuthRoutes(params AuthRoutesParams) {
 		authRoutes.GET("", params.authMiddleware.Handler, params.authController.GetAuth)
 		authRoutes.POST("", params.validationMiddleware.Login, params.authController.Login)
 		authRoutes.POST("/refresh-token", params.authController.RefreshToken)
-		authRoutes.POST("/logout", params.authController.Logout)
+		authRoutes.POST("/logout", params.authMiddleware.Handler, params.authController.Logout)
 		authRoutes.POST("/register", params.validationMiddleware.Register, params.authController.Register)
 		authRoutes.POST("/verify", params.validationMiddleware.VerifyNewAccount, params.authController.VerifyNewAccount)
 	}

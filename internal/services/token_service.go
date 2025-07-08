@@ -14,78 +14,24 @@ import (
 	"github.com/google/uuid"
 )
 
-type TokenPair struct {
-	Raw    string
-	Hashed string
-}
-
-type TokenPayload struct {
-	UserId uuid.UUID
-	Jti    uuid.UUID
-}
-
-type RefreshTokenPayload struct {
-	UserId uuid.UUID
-	Jti    uuid.UUID
-}
-
-type CreateAuthTokenParams struct {
-	UserId      uuid.UUID
-	JwtVersion  string
-	OldRefToken *string
-	OldTokenJti *uuid.UUID
-}
-
-type AuthTokens struct {
-	RefreshToken string
-	AccessToken  string
-}
-
-type AccountVerificationTokenAndCode struct {
-	RawToken string
-	Code     string
-}
-
-type ITokenService interface {
-	VerifyAccessToken(tokenString string) (*TokenPayload, error)
-	DeleteAccessToken(jti uuid.UUID) error
-	DeleteRefreshToken(hashedToken string) error
-	GetRefreshToken(hashedToken string) (map[string]string, error)
-	HashWithSHA256(randomStr string) string
-	DeleteVerificationToken(hashedToken string) error
-	GetVerificationToken(hashedToken string) (map[string]string, error)
-	CreateAuthToken(params CreateAuthTokenParams) (AuthTokens, error)
-	GenerateRandomBytes(size int) (string, error)
-	CreateAccountVerificationTokenAndCode(userId uuid.UUID) (AccountVerificationTokenAndCode, error)
-	VerifyNewAccountTokenAndCode(params AccountVerificationTokenAndCode) (string, error)
-}
-
-type tokenService struct {
-	redisRepository repositories.IRedisRepository
-	secret          string
-}
-
-func NewTokenService(
-	redisRepository repositories.IRedisRepository,
-	secret string,
-) ITokenService {
+func NewTokenService(redisRepository repositories.IRedisRepository, secret string) ITokenService {
 	return &tokenService{
 		redisRepository: redisRepository,
 		secret:          secret,
 	}
 }
 
-func (s *tokenService) CreateAuthToken(params CreateAuthTokenParams) (AuthTokens, error) {
+func (s *tokenService) CreateAuthTokens(params CreateAuthTokenParams) (CreateAuthTokensResult, error) {
 	if params.OldRefToken != nil {
 		if err := s.DeleteRefreshToken(s.HashWithSHA256(*params.OldRefToken)); err != nil {
 			log.Printf("failed to delete refresh token: %s", err.Error())
-			return AuthTokens{}, err
+			return CreateAuthTokensResult{}, err
 		}
 	}
 
 	if params.OldTokenJti != nil {
 		if err := s.DeleteAccessToken(*params.OldTokenJti); err != nil {
-			return AuthTokens{}, err
+			return CreateAuthTokensResult{}, err
 		}
 	}
 
@@ -93,94 +39,110 @@ func (s *tokenService) CreateAuthToken(params CreateAuthTokenParams) (AuthTokens
 
 	refTokenPair, err := s.generatePairToken()
 	if err != nil {
-		return AuthTokens{}, err
+		return CreateAuthTokensResult{}, err
 	}
 
 	// save refresh token for 7 days
 	s.redisRepository.HSet(
 		setRefTokenKey(refTokenPair.Hashed),
 		map[string]any{
-			"userId": params.UserId,
-			"jti":    newJti,
+			"userId": params.UserId.String(),
+			"jti":    newJti.String(),
 		}, time.Duration(time.Hour*24*7),
 	)
 
 	accessToken, err := s.generateAccessToken(params.UserId, newJti, params.JwtVersion)
 	if err != nil {
-		return AuthTokens{}, err
+		return CreateAuthTokensResult{}, err
 	}
 
 	// save access token for 1 hour
 	s.redisRepository.HSet(
 		setAccTokenKey(newJti),
 		map[string]any{
-			"userId":      params.UserId,
+			"userId":      params.UserId.String(),
 			"accessToken": accessToken,
 		}, time.Duration(time.Hour),
 	)
 
-	return AuthTokens{
+	return CreateAuthTokensResult{
 		RefreshToken: refTokenPair.Raw,
 		AccessToken:  accessToken,
 	}, nil
 
 }
 
-func (s *tokenService) VerifyAccessToken(tokenString string) (*TokenPayload, error) {
-	token, err := jwt.ParseWithClaims(
-		tokenString,
-		&jwt.MapClaims{},
-		func(token *jwt.Token) (any, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, errors.New("unexpected signing method")
-			}
-			return []byte(s.secret), nil
-		})
+func (s *tokenService) VerifyAccessToken(tokenString string) (VerifyAccessTokenResult, error) {
+	claims := &CustomClaims{}
+
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return []byte(s.secret), nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("token parsing failed: %w", err)
+		return VerifyAccessTokenResult{}, fmt.Errorf("token parsing failed: %w", err)
 	}
 
-	claims, ok := token.Claims.(*jwt.MapClaims)
-	if !ok || !token.Valid {
-		return nil, errors.New("invalid token")
+	if !token.Valid {
+		return VerifyAccessTokenResult{}, errors.New("invalid token")
 	}
 
-	exp, ok := (*claims)["exp"].(float64)
-	if !ok || time.Unix(int64(exp), 0).Before(time.Now()) {
-		return nil, errors.New("token expired")
-	}
-
-	userId, err := uuid.Parse(getClaimString(claims, "userId"))
+	userId, err := uuid.Parse(claims.UserID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid user ID: %w", err)
+		return VerifyAccessTokenResult{}, fmt.Errorf("invalid user ID: %w", err)
 	}
 
-	jti, err := uuid.Parse(getClaimString(claims, "jti"))
+	jti, err := uuid.Parse(claims.JTI)
 	if err != nil {
-		return nil, fmt.Errorf("invalid JTI: %w", err)
+		return VerifyAccessTokenResult{}, fmt.Errorf("invalid JTI: %w", err)
 	}
 
-	return &TokenPayload{
-		UserId: userId,
-		Jti:    jti,
+	data, err := s.redisRepository.HGetAll(setAccTokenKey(jti))
+	if err != nil || len(data) == 0 {
+		return VerifyAccessTokenResult{}, errors.New("access token not found or revoked")
+	}
+
+	return VerifyAccessTokenResult{
+		UserId:     userId,
+		Jti:        jti,
+		JwtVersion: claims.JwtVersion,
 	}, nil
 }
 
 func (s *tokenService) DeleteRefreshToken(hashedToken string) error {
 	key := setRefTokenKey(hashedToken)
-	if err := s.redisRepository.Delete(key); err != nil {
-		return err
-	}
-	return nil
+	return s.redisRepository.Delete(key)
 }
 
-func (s *tokenService) GetRefreshToken(hashedToken string) (map[string]string, error) {
+func (s *tokenService) GetRefreshToken(hashedToken string) (GetRefreshTokenResult, error) {
 	key := setRefTokenKey(hashedToken)
 	data, err := s.redisRepository.HGetAll(key)
 	if err != nil {
-		return nil, err
+		return GetRefreshTokenResult{}, err
 	}
-	return data, nil
+
+	strUserId, ok := data["userId"]
+	strJti, ok2 := data["jti"]
+	if !ok || !ok2 {
+		return GetRefreshTokenResult{}, err
+	}
+
+	userId, err := uuid.Parse(strUserId)
+	if err != nil {
+		return GetRefreshTokenResult{}, err
+	}
+
+	jti, err := uuid.Parse(strJti)
+	if err != nil {
+		return GetRefreshTokenResult{}, err
+	}
+
+	return GetRefreshTokenResult{
+		UserId: userId,
+		Jti:    jti,
+	}, nil
 }
 
 func (s *tokenService) DeleteAccessToken(jti uuid.UUID) error {
@@ -197,11 +159,14 @@ func (s *tokenService) HashWithSHA256(randomStr string) string {
 }
 
 func (s *tokenService) generateAccessToken(userId, jti uuid.UUID, jwtVersion string) (string, error) {
-	claims := jwt.MapClaims{
-		"userId":     userId.String(),
-		"jwtVersion": jwtVersion,
-		"jti":        jti.String(),
-		"exp":        time.Now().Add(1 * time.Hour).Unix(),
+	claims := CustomClaims{
+		UserID:     userId.String(),
+		JTI:        jti.String(),
+		JwtVersion: jwtVersion,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(s.secret))
@@ -228,15 +193,15 @@ func (s *tokenService) GenerateRandomBytes(size int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-func (s *tokenService) CreateAccountVerificationTokenAndCode(userId uuid.UUID) (AccountVerificationTokenAndCode, error) {
+func (s *tokenService) CreateAccountVerificationTokenAndCode(userId uuid.UUID) (CreateAccountVerificationTokenAndCodeResult, error) {
 	tokenPair, err := s.generatePairToken()
 	if err != nil {
-		return AccountVerificationTokenAndCode{}, err
+		return CreateAccountVerificationTokenAndCodeResult{}, err
 	}
 
 	code, err := s.GenerateRandomBytes(4)
 	if err != nil {
-		return AccountVerificationTokenAndCode{}, err
+		return CreateAccountVerificationTokenAndCodeResult{}, err
 	}
 
 	if err := s.redisRepository.HSet(
@@ -247,16 +212,16 @@ func (s *tokenService) CreateAccountVerificationTokenAndCode(userId uuid.UUID) (
 		},
 		time.Duration(time.Minute*30),
 	); err != nil {
-		return AccountVerificationTokenAndCode{}, err
+		return CreateAccountVerificationTokenAndCodeResult{}, err
 	}
 
-	return AccountVerificationTokenAndCode{
+	return CreateAccountVerificationTokenAndCodeResult{
 		RawToken: tokenPair.Raw,
 		Code:     code,
 	}, nil
 }
 
-func (s *tokenService) VerifyNewAccountTokenAndCode(params AccountVerificationTokenAndCode) (string, error) {
+func (s *tokenService) VerifyNewAccountTokenAndCode(params CreateAccountVerificationTokenAndCodeResult) (string, error) {
 	log.Printf("token : %s", params.RawToken)
 	key := setAccountVerificationKey(s.HashWithSHA256(params.RawToken))
 

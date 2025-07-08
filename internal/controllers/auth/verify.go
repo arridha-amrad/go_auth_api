@@ -29,7 +29,7 @@ func (ctrl *authController) VerifyNewAccount(c *gin.Context) {
 	}
 
 	strUserId, err := ctrl.tokenService.VerifyNewAccountTokenAndCode(
-		services.AccountVerificationTokenAndCode{
+		services.CreateAccountVerificationTokenAndCodeResult{
 			RawToken: body.Token,
 			Code:     body.Code,
 		})
@@ -82,7 +82,7 @@ func (ctrl *authController) VerifyNewAccount(c *gin.Context) {
 		return
 	}
 
-	authToken, err := ctrl.tokenService.CreateAuthToken(services.CreateAuthTokenParams{
+	authToken, err := ctrl.tokenService.CreateAuthTokens(services.CreateAuthTokenParams{
 		UserId:     user.ID,
 		JwtVersion: user.JwtVersion,
 	})

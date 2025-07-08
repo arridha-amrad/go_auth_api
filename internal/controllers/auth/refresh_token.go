@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 func (ctrl *authController) RefreshToken(c *gin.Context) {
@@ -25,36 +24,19 @@ func (ctrl *authController) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	userIdStr, ok1 := data["userId"]
-	jtiStr, ok2 := data["jti"]
-	if !ok1 || ok2 {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "malformed token payload"})
-		return
-	}
+	log.Println(data)
 
-	userId, err := uuid.Parse(userIdStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID format"})
-		return
-	}
-
-	jti, err := uuid.Parse(jtiStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid jti format"})
-		return
-	}
-
-	user, err := ctrl.userService.GetUserById(c.Request.Context(), userId)
+	user, err := ctrl.userService.GetUserById(c.Request.Context(), data.UserId)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
-	authToken, err := ctrl.tokenService.CreateAuthToken(services.CreateAuthTokenParams{
-		UserId:      userId,
+	authToken, err := ctrl.tokenService.CreateAuthTokens(services.CreateAuthTokenParams{
+		UserId:      data.UserId,
 		JwtVersion:  user.JwtVersion,
 		OldRefToken: &cookieRefToken,
-		OldTokenJti: &jti,
+		OldTokenJti: &data.Jti,
 	})
 	if err != nil {
 		log.Println(err.Error())
@@ -64,5 +46,5 @@ func (ctrl *authController) RefreshToken(c *gin.Context) {
 
 	c.SetCookie(constants.COOKIE_REFRESH_TOKEN, authToken.RefreshToken, 3600*24*365, "/", "", os.Getenv("GO_ENV") == "production", true)
 
-	c.JSON(http.StatusOK, gin.H{"token": "Bearer " + authToken.AccessToken})
+	c.JSON(http.StatusOK, gin.H{"token": authToken.AccessToken})
 }

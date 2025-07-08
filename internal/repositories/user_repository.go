@@ -186,6 +186,7 @@ func (s *userRepository) GetByEmail(ctx context.Context, email string) (*models.
 }
 
 func (s *userRepository) UpdateOne(ctx context.Context, user *models.User) (*models.User, error) {
+	log.Println(user)
 	query := fmt.Sprintf(`
 		UPDATE users
 		SET username=$1, 
@@ -196,7 +197,7 @@ func (s *userRepository) UpdateOne(ctx context.Context, user *models.User) (*mod
 				jwt_version=$6, 
 				is_verified=$7, 
 				updated_at=NOW()
-		WHERE id=$6 
+		WHERE id=$8 
 		RETURNING %s`,
 		userSelectedFields,
 	)
@@ -209,6 +210,7 @@ func (s *userRepository) UpdateOne(ctx context.Context, user *models.User) (*mod
 		user.Role,
 		user.JwtVersion,
 		user.IsVerified,
+		user.ID,
 	).
 		Scan(scanUser(user)...); err != nil {
 		return nil, err

@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"log"
 	"my-go-api/internal/services"
 	"net/http"
 
@@ -17,16 +16,15 @@ func (ctrl *authController) GetAuth(c *gin.Context) {
 	}
 
 	// 2. Type assertion
-	tokenPayload, ok := value.(services.TokenPayload)
+	tokenPayload, ok := value.(services.VerifyAccessTokenResult)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user id"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token payload"})
 		return
 	}
 
 	// 3. Fetch user
 	user, err := ctrl.userService.GetUserById(c.Request.Context(), tokenPayload.UserId)
 	if err != nil {
-		log.Printf("GetCurrentUser: failed to fetch user %v: %v", tokenPayload.UserId, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "user not found"})
 		return
 	}
