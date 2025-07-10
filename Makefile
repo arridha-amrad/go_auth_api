@@ -51,3 +51,9 @@ compose-dev-up:
 
 compose-dev-down:
 	docker-compose -f docker/compose.dev.yml down
+
+compose-test-up:
+	docker-compose -f docker/compose.test.yml up -d
+
+compose-test-down:
+	docker-compose -f docker/compose.test.yml down

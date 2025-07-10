@@ -37,7 +37,7 @@ func (ctrl *authController) Register(c *gin.Context) {
 		return
 	}
 
-	jwtVersion, err := ctrl.tokenService.GenerateRandomBytes(8)
+	jwtVersion, err := ctrl.utils.GenerateRandomBytes(8)
 	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{"errors": err.Error()})
 		return
@@ -55,7 +55,7 @@ func (ctrl *authController) Register(c *gin.Context) {
 		return
 	}
 
-	data, err := ctrl.tokenService.CreateAccountVerificationTokenAndCode(user.ID)
+	data, err := ctrl.authService.CreateVerificationToken(user.ID)
 	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{"errors": err.Error()})
 		return

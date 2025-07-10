@@ -137,7 +137,12 @@ func (s *userRepository) CreateOne(
 func (s *userRepository) GetById(ctx context.Context, userId uuid.UUID) (*models.User, error) {
 	user := &models.User{}
 
-	query := fmt.Sprintf(`SELECT %s FROM users WHERE id = $1`, userSelectedFields)
+	query := fmt.Sprintf(`
+	SELECT %s 
+	FROM users 
+	WHERE id = $1`,
+		userSelectedFields,
+	)
 
 	if err := s.db.QueryRowContext(ctx, query, userId).
 		Scan(scanUser(user)...); err != nil {

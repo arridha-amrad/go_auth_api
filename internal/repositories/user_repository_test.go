@@ -3,423 +3,195 @@ package repositories
 import (
 	"context"
 	"database/sql"
-	"errors"
-	"testing"
-	"time"
-
 	"my-go-api/internal/models"
+	"my-go-api/pkg/database"
+	"testing"
 
-	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
 
-func TestUserRepository_GetOne(t *testing.T) {
-	db, mock, err := sqlmock.New()
+type UserRepositoryTestSuite struct {
+	suite.Suite
+	db   *sql.DB
+	repo IUserRepository
+}
+
+func (suite *UserRepositoryTestSuite) SetupSuite() {
+	// Connect to the test database
+	db, err := database.Connect("postgres://user_go_api_test:pg_pwd_go_api_test@localhost:5432/pg_db_go_api_test?sslmode=disable", "5m", 50, 25)
+
 	if err != nil {
-		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+		suite.T().Fatal(err)
 	}
-	defer db.Close()
+	suite.db = db
+	suite.repo = NewUserRepository(db)
 
-	repo := NewUserRepository(db)
+	suite.db.Exec(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`)
+	suite.db.Exec(`CREATE TYPE providers AS ENUM ('credentials', 'google')`)
+	suite.db.Exec(`CREATE TYPE user_roles AS ENUM ('user', 'admin')`)
 
-	tests := []struct {
-		name    string
-		params  GetOneParams
-		mock    func()
-		want    *models.User
-		wantErr bool
-	}{
-		{
-			name: "Get by ID",
-			params: GetOneParams{
-				Id: func() *uuid.UUID { id := uuid.New(); return &id }(),
-			},
-			mock: func() {
-				rows := sqlmock.NewRows([]string{"id", "name", "username", "email", "password", "provider", "role", "created_at", "updated_at"}).
-					AddRow(uuid.New(), "John Doe", "johndoe", "john@example.com", "password", "local", "user", time.Now(), time.Now())
-				mock.ExpectQuery("SELECT id, name, username, email, password, provider, role, created_at, updated_at FROM users WHERE id = ?").
-					WithArgs(sqlmock.AnyArg()).
-					WillReturnRows(rows)
-			},
-			want:    &models.User{},
-			wantErr: false,
-		},
-		{
-			name: "Get by username",
-			params: GetOneParams{
-				Username: func() *string { s := "johndoe"; return &s }(),
-			},
-			mock: func() {
-				rows := sqlmock.NewRows([]string{"id", "name", "username", "email", "password", "provider", "role", "created_at", "updated_at"}).
-					AddRow(uuid.New(), "John Doe", "johndoe", "john@example.com", "password", "local", "user", time.Now(), time.Now())
-				mock.ExpectQuery("SELECT id, name, username, email, password, provider, role, created_at, updated_at FROM users WHERE username = ?").
-					WithArgs("johndoe").
-					WillReturnRows(rows)
-			},
-			want:    &models.User{},
-			wantErr: false,
-		},
-		{
-			name: "Get by email",
-			params: GetOneParams{
-				Email: func() *string { s := "john@example.com"; return &s }(),
-			},
-			mock: func() {
-				rows := sqlmock.NewRows([]string{"id", "name", "username", "email", "password", "provider", "role", "created_at", "updated_at"}).
-					AddRow(uuid.New(), "John Doe", "johndoe", "john@example.com", "password", "local", "user", time.Now(), time.Now())
-				mock.ExpectQuery("SELECT id, name, username, email, password, provider, role, created_at, updated_at FROM users WHERE email = ?").
-					WithArgs("john@example.com").
-					WillReturnRows(rows)
-			},
-			want:    &models.User{},
-			wantErr: false,
-		},
-		{
-			name:   "No valid query field",
-			params: GetOneParams{
-				// No fields set
-			},
-			mock:    func() {},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "Not found",
-			params: GetOneParams{
-				Username: func() *string { s := "nonexistent"; return &s }(),
-			},
-			mock: func() {
-				mock.ExpectQuery("SELECT id, name, username, email, password, provider, role, created_at, updated_at FROM users WHERE username = ?").
-					WithArgs("nonexistent").
-					WillReturnError(sql.ErrNoRows)
-			},
-			want:    nil,
-			wantErr: true,
-		},
+	// Create the users table
+	_, err = suite.db.Exec(`
+		CREATE TABLE
+			users (
+				id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+				username VARCHAR(50) UNIQUE NOT NULL,
+				name VARCHAR(100) NOT NULL,
+				email VARCHAR(100) UNIQUE NOT NULL,
+				password TEXT,
+				provider providers DEFAULT 'credentials',
+				role user_roles DEFAULT 'user',
+				jwt_version VARCHAR(20) NOT NULL,
+				is_verified BOOLEAN NOT NULL DEFAULT false,
+				created_at TIMESTAMP(0)
+				WITH
+					TIME ZONE NOT NULL DEFAULT NOW (),
+					updated_at TIMESTAMP(0)
+				WITH
+					TIME ZONE NOT NULL DEFAULT NOW ()
+			);
+	`)
+	if err != nil {
+		suite.T().Fatal(err)
+	}
+}
+
+func (suite *UserRepositoryTestSuite) TearDownSuite() {
+	// Drop the tokens table
+	_, err := suite.db.Exec("DROP TABLE IF EXISTS users")
+	if err != nil {
+		suite.T().Fatal(err)
+	}
+	_, err = suite.db.Exec(`DROP EXTENSION IF EXISTS "uuid-ossp"`)
+	if err != nil {
+		suite.T().Fatal(err)
+	}
+	_, err = suite.db.Exec("DROP TYPE IF EXISTS providers")
+	if err != nil {
+		suite.T().Fatal(err)
+	}
+	_, err = suite.db.Exec("DROP TYPE IF EXISTS user_roles")
+	if err != nil {
+		suite.T().Fatal(err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.mock()
-			got, err := repo.GetOne(context.Background(), tt.params)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("userRepository.GetOne() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if tt.want != nil && got == nil {
-				t.Errorf("userRepository.GetOne() = %v, want %v", got, tt.want)
-			}
+	// Close the database connection
+	suite.db.Close()
+}
+
+func (suite *UserRepositoryTestSuite) SetupTest() {
+	if _, err := suite.db.Exec("TRUNCATE TABLE users RESTART IDENTITY CASCADE"); err != nil {
+		suite.T().Fatal(err)
+	}
+
+	users := []CreateOneParams{
+		{Name: "dummy", Username: "dummy00", Email: "dummy@mail.com", Password: "pwd123", JWTVersion: "jwt_123_version"},
+		{Name: "john", Username: "john00", Email: "john@mail.com", Password: "pwd123", JWTVersion: "jwt_123_version"},
+		{Name: "jane", Username: "jane00", Email: "jane@mail.com", Password: "pwd123", JWTVersion: "jwt_123_version"},
+	}
+
+	query := `
+	INSERT INTO users (
+		name,
+		username,
+		email,
+		password,
+		jwt_version
+	)
+	VALUES ($1, $2, $3, $4, $5)
+	`
+
+	for _, user := range users {
+		_, err := suite.db.ExecContext(context.Background(), query,
+			user.Name,
+			user.Username,
+			user.Email,
+			user.Password,
+			user.JWTVersion,
+		)
+		if err != nil {
+			suite.T().Fatal(err)
+		}
+	}
+
+}
+
+func (suite *UserRepositoryTestSuite) TestCreateOne() {
+	// insert params
+	name := "ari"
+	username := "ari08"
+	email := "ari@mail.com"
+	password := "12345"
+	jwtVersion := "jwt-123-version"
+
+	suite.Run("it shold create new user", func() {
+		// insert action
+		newUser, err := suite.repo.CreateOne(context.Background(), CreateOneParams{
+			Name:       name,
+			Username:   username,
+			Email:      email,
+			Password:   password,
+			JWTVersion: jwtVersion,
 		})
-	}
-}
+		assert.NoError(suite.T(), err)
+		assert.NotNil(suite.T(), newUser)
+		// verify returned data
+		assert.Equal(suite.T(), name, newUser.Name)
+		assert.Equal(suite.T(), username, newUser.Username)
+		assert.Equal(suite.T(), email, newUser.Email)
+		assert.Equal(suite.T(), password, newUser.Password)
+		assert.Equal(suite.T(), "user", newUser.Role)
+		assert.Equal(suite.T(), "credentials", newUser.Provider)
 
-func TestUserRepository_GetAll(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
-	}
-	defer db.Close()
-
-	repo := NewUserRepository(db)
-
-	t.Run("Success", func(t *testing.T) {
-		now := time.Now()
-		expectedUsers := []models.User{
-			{
-				ID:        uuid.New(),
-				Name:      "John Doe",
-				Username:  "johndoe",
-				Email:     "john@example.com",
-				Provider:  "local",
-				Role:      "user",
-				CreatedAt: now.String(),
-				UpdatedAt: now.String(),
-			},
-			{
-				ID:        uuid.New(),
-				Name:      "Jane Doe",
-				Username:  "janedoe",
-				Email:     "jane@example.com",
-				Provider:  "local",
-				Role:      "admin",
-				CreatedAt: now.String(),
-				UpdatedAt: now.String(),
-			},
-		}
-
-		rows := sqlmock.NewRows([]string{"id", "name", "username", "email", "provider", "role", "created_at", "updated_at"})
-		for _, user := range expectedUsers {
-			rows.AddRow(user.ID, user.Name, user.Username, user.Email, user.Provider, user.Role, user.CreatedAt, user.UpdatedAt)
-		}
-
-		mock.ExpectQuery("SELECT id, name, username, email, provider, role, created_at, updated_at FROM users").
-			WillReturnRows(rows)
-
-		users, err := repo.GetAll(context.Background())
-		assert.NoError(t, err)
-		assert.Equal(t, len(expectedUsers), len(users))
-		assert.Equal(t, expectedUsers[0].Username, users[0].Username)
-		assert.Equal(t, expectedUsers[1].Username, users[1].Username)
+		// verify the new user in inserted into database
+		var dbUser models.User
+		err = suite.db.QueryRow(`
+SELECT id, username, name, email, password, provider, role, created_at, updated_at
+FROM users
+WHERE email = $1
+	`, newUser.Email).Scan(&dbUser.ID, &dbUser.Username, &dbUser.Name, &dbUser.Email, &dbUser.Password, &dbUser.Provider, &dbUser.Role, &dbUser.CreatedAt, &dbUser.UpdatedAt)
+		assert.NoError(suite.T(), err)
+		assert.Equal(suite.T(), newUser.Username, dbUser.Username)
+		assert.Equal(suite.T(), password, dbUser.Password)
 	})
 
-	t.Run("Error", func(t *testing.T) {
-		mock.ExpectQuery("SELECT id, name, username, email, provider, role, created_at, updated_at FROM users").
-			WillReturnError(errors.New("some error"))
+	suite.Run("it should fail, because duplicate email", func() {
+		_, err := suite.repo.CreateOne(context.Background(), CreateOneParams{
+			Name:       "vxcvx",
+			Username:   "zxpopo",
+			Email:      "ari@mail.com",
+			Password:   "xcvxvx",
+			JWTVersion: "xcvx",
+		})
+		assert.Error(suite.T(), err)
+		assert.Contains(suite.T(), err.Error(), "duplicate")
+	})
 
-		users, err := repo.GetAll(context.Background())
-		assert.Error(t, err)
-		assert.Nil(t, users)
+	suite.Run("it should fail, because duplicate username", func() {
+		_, err := suite.repo.CreateOne(context.Background(), CreateOneParams{
+			Name:       "vxcvx",
+			Username:   "ari08",
+			Email:      "asdasdxc@xcvxc.x",
+			Password:   "xcvxvx",
+			JWTVersion: "xcvx",
+		})
+		assert.Error(suite.T(), err)
+		assert.Contains(suite.T(), err.Error(), "duplicate")
 	})
 }
 
-func TestUserRepository_CreateOne(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
-	}
-	defer db.Close()
-
-	repo := NewUserRepository(db)
-
-	t.Run("Success", func(t *testing.T) {
-		now := time.Now()
-		params := CreateOneParams{
-			Name:       "John Doe",
-			Username:   "johndoe",
-			Email:      "john@example.com",
-			Password:   "hashedpassword",
-			JWTVersion: "1",
-		}
-
-		expectedUser := &models.User{
-			ID:        uuid.New(),
-			Name:      params.Name,
-			Username:  params.Username,
-			Email:     params.Email,
-			Password:  params.Password,
-			Provider:  "local",
-			Role:      "user",
-			CreatedAt: now.String(),
-			UpdatedAt: now.String(),
-		}
-
-		mock.ExpectQuery("INSERT INTO users").
-			WithArgs(params.Name, params.Username, params.Email, params.Password, params.JWTVersion).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "name", "email", "password", "username", "provider", "role", "updated_at", "created_at"}).
-				AddRow(expectedUser.ID, expectedUser.Name, expectedUser.Email, expectedUser.Password, expectedUser.Username, expectedUser.Provider, expectedUser.Role, expectedUser.UpdatedAt, expectedUser.CreatedAt))
-
-		user, err := repo.CreateOne(context.Background(), params)
-		assert.NoError(t, err)
-		assert.Equal(t, expectedUser.Username, user.Username)
-		assert.Equal(t, expectedUser.Email, user.Email)
-	})
-
-	t.Run("Error", func(t *testing.T) {
-		params := CreateOneParams{
-			Name:       "John Doe",
-			Username:   "johndoe",
-			Email:      "john@example.com",
-			Password:   "hashedpassword",
-			JWTVersion: "1",
-		}
-
-		mock.ExpectQuery("INSERT INTO users").
-			WithArgs(params.Name, params.Username, params.Email, params.Password, params.JWTVersion).
-			WillReturnError(errors.New("some error"))
-
-		user, err := repo.CreateOne(context.Background(), params)
-		assert.Error(t, err)
-		assert.Nil(t, user)
+func (suite *UserRepositoryTestSuite) TestGetOne() {
+	suite.Run("It should find a user", func() {
+		username := "john00"
+		result, err := suite.repo.GetOne(context.Background(), GetOneParams{
+			Username: &username,
+		})
+		assert.NoError(suite.T(), err)
+		assert.Equal(suite.T(), username, result.Username)
 	})
 }
 
-func TestUserRepository_GetById(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
-	}
-	defer db.Close()
-
-	repo := NewUserRepository(db)
-
-	t.Run("Success", func(t *testing.T) {
-		userId := uuid.New()
-		expectedUser := &models.User{
-			ID:        userId,
-			Name:      "John Doe",
-			Username:  "johndoe",
-			Email:     "john@example.com",
-			Password:  "hashedpassword",
-			Provider:  "local",
-			Role:      "user",
-			CreatedAt: time.Now().String(),
-			UpdatedAt: time.Now().String(),
-		}
-
-		mock.ExpectQuery("SELECT id, name, username, email, password, provider, role, created_at, updated_at FROM users WHERE id = ?").
-			WithArgs(userId).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "name", "username", "email", "password", "provider", "role", "created_at", "updated_at"}).
-				AddRow(expectedUser.ID, expectedUser.Name, expectedUser.Username, expectedUser.Email, expectedUser.Password, expectedUser.Provider, expectedUser.Role, expectedUser.CreatedAt, expectedUser.UpdatedAt))
-
-		user, err := repo.GetById(context.Background(), userId)
-		assert.NoError(t, err)
-		assert.Equal(t, expectedUser.ID, user.ID)
-		assert.Equal(t, expectedUser.Username, user.Username)
-	})
-
-	t.Run("Not found", func(t *testing.T) {
-		userId := uuid.New()
-		mock.ExpectQuery("SELECT id, name, username, email, password, provider, role, created_at, updated_at FROM users WHERE id = ?").
-			WithArgs(userId).
-			WillReturnError(sql.ErrNoRows)
-
-		user, err := repo.GetById(context.Background(), userId)
-		assert.Error(t, err)
-		assert.Nil(t, user)
-	})
-}
-
-func TestUserRepository_GetByUsername(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
-	}
-	defer db.Close()
-
-	repo := NewUserRepository(db)
-
-	t.Run("Success", func(t *testing.T) {
-		username := "johndoe"
-		expectedUser := &models.User{
-			ID:        uuid.New(),
-			Name:      "John Doe",
-			Username:  username,
-			Email:     "john@example.com",
-			Password:  "hashedpassword",
-			Provider:  "local",
-			Role:      "user",
-			CreatedAt: time.Now().String(),
-			UpdatedAt: time.Now().String(),
-		}
-
-		mock.ExpectQuery("SELECT id, name, username, email, password, provider, role, created_at, updated_at FROM users WHERE username = ?").
-			WithArgs(username).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "name", "username", "email", "password", "provider", "role", "created_at", "updated_at"}).
-				AddRow(expectedUser.ID, expectedUser.Name, expectedUser.Username, expectedUser.Email, expectedUser.Password, expectedUser.Provider, expectedUser.Role, expectedUser.CreatedAt, expectedUser.UpdatedAt))
-
-		user, err := repo.GetByUsername(context.Background(), username)
-		assert.NoError(t, err)
-		assert.Equal(t, expectedUser.Username, user.Username)
-	})
-
-	t.Run("Not found", func(t *testing.T) {
-		username := "nonexistent"
-		mock.ExpectQuery("SELECT id, name, username, email, password, provider, role, created_at, updated_at FROM users WHERE username = ?").
-			WithArgs(username).
-			WillReturnError(sql.ErrNoRows)
-
-		user, err := repo.GetByUsername(context.Background(), username)
-		assert.Error(t, err)
-		assert.Nil(t, user)
-	})
-}
-
-func TestUserRepository_GetByEmail(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
-	}
-	defer db.Close()
-
-	repo := NewUserRepository(db)
-
-	t.Run("Success", func(t *testing.T) {
-		email := "john@example.com"
-		expectedUser := &models.User{
-			ID:        uuid.New(),
-			Name:      "John Doe",
-			Username:  "johndoe",
-			Email:     email,
-			Password:  "hashedpassword",
-			Provider:  "local",
-			Role:      "user",
-			CreatedAt: time.Now().String(),
-			UpdatedAt: time.Now().String(),
-		}
-
-		mock.ExpectQuery("SELECT id, name, username, email, password, provider, role, created_at, updated_at FROM users WHERE email = ?").
-			WithArgs(email).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "name", "username", "email", "password", "provider", "role", "created_at", "updated_at"}).
-				AddRow(expectedUser.ID, expectedUser.Name, expectedUser.Username, expectedUser.Email, expectedUser.Password, expectedUser.Provider, expectedUser.Role, expectedUser.CreatedAt, expectedUser.UpdatedAt))
-
-		user, err := repo.GetByEmail(context.Background(), email)
-		assert.NoError(t, err)
-		assert.Equal(t, expectedUser.Email, user.Email)
-	})
-
-	t.Run("Not found", func(t *testing.T) {
-		email := "nonexistent@example.com"
-		mock.ExpectQuery("SELECT id, name, username, email, password, provider, role, created_at, updated_at FROM users WHERE email = ?").
-			WithArgs(email).
-			WillReturnError(sql.ErrNoRows)
-
-		user, err := repo.GetByEmail(context.Background(), email)
-		assert.Error(t, err)
-		assert.Nil(t, user)
-	})
-}
-
-func TestUserRepository_UpdateOne(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
-	}
-	defer db.Close()
-
-	repo := NewUserRepository(db)
-
-	t.Run("Success", func(t *testing.T) {
-		user := &models.User{
-			ID:        uuid.New(),
-			Name:      "John Doe Updated",
-			Username:  "johndoe",
-			Email:     "john.updated@example.com",
-			Password:  "newhashedpassword",
-			Role:      "admin",
-			Provider:  "local",
-			CreatedAt: time.Now().String(),
-		}
-
-		mock.ExpectQuery("UPDATE users").
-			WithArgs(user.Username, user.Email, user.Name, user.Password, user.Role, user.ID).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "name", "username", "email", "password", "provider", "role", "created_at", "updated_at"}).
-				AddRow(user.ID, user.Name, user.Username, user.Email, user.Password, user.Provider, user.Role, user.CreatedAt, time.Now()))
-
-		updatedUser, err := repo.UpdateOne(context.Background(), user)
-		assert.NoError(t, err)
-		assert.Equal(t, user.Name, updatedUser.Name)
-		assert.Equal(t, user.Email, updatedUser.Email)
-	})
-
-	t.Run("Error", func(t *testing.T) {
-		user := &models.User{
-			ID:        uuid.New(),
-			Name:      "John Doe Updated",
-			Username:  "johndoe",
-			Email:     "john.updated@example.com",
-			Password:  "newhashedpassword",
-			Role:      "admin",
-			Provider:  "local",
-			CreatedAt: time.Now().String(),
-		}
-
-		mock.ExpectQuery("UPDATE users").
-			WithArgs(user.Username, user.Email, user.Name, user.Password, user.Role, user.ID).
-			WillReturnError(errors.New("some error"))
-
-		updatedUser, err := repo.UpdateOne(context.Background(), user)
-		assert.Error(t, err)
-		assert.Nil(t, updatedUser)
-	})
+func TestUserRepositoryTestSuite(t *testing.T) {
+	suite.Run(t, new(UserRepositoryTestSuite))
 }

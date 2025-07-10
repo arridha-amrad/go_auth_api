@@ -16,8 +16,8 @@ type authService struct {
 
 type IAuthService interface {
 	CreateAuthTokens(params CreateAuthTokenParams) (CreateAuthTokensResult, error)
-	CreateVerificationToken(userId uuid.UUID) (CreateVerificationTokenData, error)
-	VerifyVerificationToken(params CreateVerificationTokenData) (string, error)
+	CreateVerificationToken(userId uuid.UUID) (VerificationTokenData, error)
+	VerifyVerificationToken(params VerificationTokenData) (string, error)
 
 	// helpers (not exported)
 	generatePairToken() (TokenPair, error)
@@ -88,15 +88,15 @@ func (s *authService) CreateAuthTokens(params CreateAuthTokenParams) (CreateAuth
 
 }
 
-func (s *authService) CreateVerificationToken(userId uuid.UUID) (CreateVerificationTokenData, error) {
+func (s *authService) CreateVerificationToken(userId uuid.UUID) (VerificationTokenData, error) {
 	tokenPair, err := s.generatePairToken()
 	if err != nil {
-		return CreateVerificationTokenData{}, err
+		return VerificationTokenData{}, err
 	}
 
 	code, err := s.utils.GenerateRandomBytes(4)
 	if err != nil {
-		return CreateVerificationTokenData{}, err
+		return VerificationTokenData{}, err
 	}
 
 	if err := s.redisService.SaveVerificationToken(VerificationData{
@@ -104,16 +104,16 @@ func (s *authService) CreateVerificationToken(userId uuid.UUID) (CreateVerificat
 		UserId:      userId.String(),
 		HashedToken: tokenPair.Hashed,
 	}); err != nil {
-		return CreateVerificationTokenData{}, err
+		return VerificationTokenData{}, err
 	}
 
-	return CreateVerificationTokenData{
+	return VerificationTokenData{
 		RawToken: tokenPair.Raw,
 		Code:     code,
 	}, nil
 }
 
-func (s *authService) VerifyVerificationToken(params CreateVerificationTokenData) (string, error) {
+func (s *authService) VerifyVerificationToken(params VerificationTokenData) (string, error) {
 	data, err := s.redisService.GetVerificationToken(s.utils.HashWithSHA256(params.RawToken))
 	if err != nil {
 		return "", err
@@ -150,7 +150,7 @@ type CreateAuthTokensResult struct {
 	AccessToken  string
 }
 
-type CreateVerificationTokenData struct {
+type VerificationTokenData struct {
 	RawToken string
 	Code     string
 }
