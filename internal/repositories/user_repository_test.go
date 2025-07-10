@@ -3,10 +3,12 @@ package repositories
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"my-go-api/internal/models"
 	"my-go-api/pkg/database"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -15,6 +17,7 @@ type UserRepositoryTestSuite struct {
 	suite.Suite
 	db   *sql.DB
 	repo IUserRepository
+	ids  []uuid.UUID
 }
 
 func (suite *UserRepositoryTestSuite) SetupSuite() {
@@ -81,6 +84,8 @@ func (suite *UserRepositoryTestSuite) TearDownSuite() {
 }
 
 func (suite *UserRepositoryTestSuite) SetupTest() {
+	suite.ids = []uuid.UUID{}
+
 	if _, err := suite.db.Exec("TRUNCATE TABLE users RESTART IDENTITY CASCADE"); err != nil {
 		suite.T().Fatal(err)
 	}
@@ -91,30 +96,48 @@ func (suite *UserRepositoryTestSuite) SetupTest() {
 		{Name: "jane", Username: "jane00", Email: "jane@mail.com", Password: "pwd123", JWTVersion: "jwt_123_version"},
 	}
 
-	query := `
-	INSERT INTO users (
-		name,
-		username,
-		email,
-		password,
-		jwt_version
-	)
-	VALUES ($1, $2, $3, $4, $5)
-	`
+	query := fmt.Sprintf(`
+		INSERT INTO users (
+			name, 
+			username, 
+			email, 
+			password, 
+			jwt_version
+		)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING %s
+	`, userSelectedFields)
 
 	for _, user := range users {
-		_, err := suite.db.ExecContext(context.Background(), query,
+		model := &models.User{}
+		if err := suite.db.QueryRowContext(context.Background(), query,
 			user.Name,
 			user.Username,
 			user.Email,
 			user.Password,
 			user.JWTVersion,
-		)
-		if err != nil {
+		).Scan(scanUser(model)...); err != nil {
 			suite.T().Fatal(err)
 		}
+		suite.ids = append(suite.ids, model.ID)
 	}
+}
 
+func (suite *UserRepositoryTestSuite) TestGetAll() {
+	suite.Run("It should get all users", func() {
+		users, err := suite.repo.GetAll(context.Background())
+		assert.NoError(suite.T(), err)
+		assert.NotEmpty(suite.T(), users)
+	})
+
+	suite.Run("It should return empty slice if no users exist", func() {
+		if _, err := suite.db.Exec("TRUNCATE TABLE users RESTART IDENTITY CASCADE"); err != nil {
+			suite.T().Fatal(err)
+		}
+		users, err := suite.repo.GetAll(context.Background())
+		assert.NoError(suite.T(), err)
+		assert.Empty(suite.T(), users)
+	})
 }
 
 func (suite *UserRepositoryTestSuite) TestCreateOne() {
@@ -125,7 +148,7 @@ func (suite *UserRepositoryTestSuite) TestCreateOne() {
 	password := "12345"
 	jwtVersion := "jwt-123-version"
 
-	suite.Run("it shold create new user", func() {
+	suite.Run("it should create new user", func() {
 		// insert action
 		newUser, err := suite.repo.CreateOne(context.Background(), CreateOneParams{
 			Name:       name,
@@ -182,7 +205,8 @@ WHERE email = $1
 }
 
 func (suite *UserRepositoryTestSuite) TestGetOne() {
-	suite.Run("It should find a user", func() {
+
+	suite.Run("It should find a user by username", func() {
 		username := "john00"
 		result, err := suite.repo.GetOne(context.Background(), GetOneParams{
 			Username: &username,
@@ -190,6 +214,50 @@ func (suite *UserRepositoryTestSuite) TestGetOne() {
 		assert.NoError(suite.T(), err)
 		assert.Equal(suite.T(), username, result.Username)
 	})
+
+	suite.Run("It should not find any user by username", func() {
+		username := "mulyono"
+		result, err := suite.repo.GetOne(context.Background(), GetOneParams{
+			Username: &username,
+		})
+		assert.Error(suite.T(), err)
+		assert.Nil(suite.T(), result)
+	})
+
+	suite.Run("It should find a user by email", func() {
+		email := "john@mail.com"
+		result, err := suite.repo.GetOne(context.Background(), GetOneParams{
+			Email: &email,
+		})
+		assert.NoError(suite.T(), err)
+		assert.Equal(suite.T(), email, result.Email)
+	})
+
+	suite.Run("It should not find any user by email", func() {
+		email := "nonexistent@example.com"
+		result, err := suite.repo.GetOne(context.Background(), GetOneParams{
+			Email: &email,
+		})
+		assert.Error(suite.T(), err)
+		assert.Nil(suite.T(), result)
+	})
+
+	suite.Run("It should return error when no parameters are given", func() {
+		result, err := suite.repo.GetOne(context.Background(), GetOneParams{})
+		assert.Error(suite.T(), err)
+		assert.Nil(suite.T(), result)
+	})
+
+	suite.Run("It should find a user by id", func() {
+		for _, id := range suite.ids {
+			result, err := suite.repo.GetOne(context.Background(), GetOneParams{
+				Id: &id,
+			})
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), result.ID, id)
+		}
+	})
+
 }
 
 func TestUserRepositoryTestSuite(t *testing.T) {
