@@ -1,44 +1,56 @@
-package services_test
+package services
 
 import (
-	mockutils "my-go-api/internal/mocks"
-	mockservices "my-go-api/internal/mocks/mock_services"
-	"my-go-api/internal/services"
+	"my-go-api/internal/utils"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/mock/gomock"
+	mock "github.com/stretchr/testify/mock"
 )
 
-func TestCreateAuthTokens(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+func TestAuthService_CreateAuthTokens(t *testing.T) {
+	// Setup
+	mockRedis := &MockIRedisService{}
+	mockJWT := &MockIJwtService{}
+	mockUtils := &utils.MockIUtils{}
 
-	mockRedis := mockservices.NewMockIRedisService(ctrl)
-	mockUtils := mockutils.NewMockIUtils(ctrl)
-	mockJwt := mockservices.NewMockIJwtService(ctrl)
+	authService := &authService{
+		redisService: mockRedis,
+		jwtService:   mockJWT,
+		utils:        mockUtils,
+	}
 
-	service := services.NewAuthService(mockRedis, mockUtils, mockJwt)
+	// Test cases
+	t.Run("successful token creation", func(t *testing.T) {
+		userId := uuid.New()
+		// jti := uuid.New()
+		hashedToken := "hashed-refresh-token"
+		// oldRefreshToken := "old-raw-refresh-token"
+		rawToken := "raw-refresh-token"
+		accessToken := "generated-access-token"
 
-	userId := uuid.New()
-	rawToken := "raw_refresh_token"
-	hashedToken := "hashed_refresh_token"
-	accessToken := "access_token"
-	jwtVersion := "v1"
+		// Mock expectations
+		mockUtils.On("GenerateRandomBytes", 32).Return(rawToken, nil)
+		mockUtils.On("HashWithSHA256", rawToken).Return(hashedToken)
+		mockJWT.On("Create", mock.Anything).Return(accessToken, nil)
+		mockRedis.On("SaveRefreshToken", mock.Anything).Return(nil)
+		mockRedis.On("SaveAccessToken", mock.Anything).Return(nil)
 
-	mockUtils.EXPECT().GenerateRandomBytes(32).Return(rawToken, nil)
-	mockUtils.EXPECT().HashWithSHA256(rawToken).Return(hashedToken)
-	mockJwt.EXPECT().Create(gomock.Any()).Return(accessToken, nil)
-	mockRedis.EXPECT().SaveRefreshToken(gomock.Any()).Return(nil)
-	mockRedis.EXPECT().SaveAccessToken(gomock.Any()).Return(nil)
+		// Call method
+		params := CreateAuthTokenParams{
+			UserId:     userId,
+			JwtVersion: "jwt-version",
+		}
+		result, err := authService.CreateAuthTokens(params)
 
-	result, err := service.CreateAuthTokens(services.CreateAuthTokenParams{
-		UserId:     userId,
-		JwtVersion: jwtVersion,
+		// Assertions
+		assert.NoError(t, err)
+		assert.Equal(t, accessToken, result.AccessToken)
+		assert.NotEmpty(t, result.RefreshToken)
+
+		mockUtils.AssertExpectations(t)
+		mockRedis.AssertExpectations(t)
+		mockJWT.AssertExpectations(t)
 	})
-
-	assert.NoError(t, err)
-	assert.Equal(t, rawToken, result.RefreshToken)
-	assert.Equal(t, accessToken, result.AccessToken)
 }

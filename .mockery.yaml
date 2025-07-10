@@ -1,0 +1,17 @@
+with-expecter: True
+inpackage: True
+dir: "{{.InterfaceDir}}"
+mockname: "Mock{{.InterfaceName}}"
+outpkg: "{{.PackageName}}"
+filename: "mock_{{.InterfaceName}}.go"
+issue-845-fix: True
+resolve-type-alias: False
+disable-version-string: True
+all: True
+packages:
+  my-go-api/internal/services:
+    config:
+      recursive: True
+  my-go-api/internal/utils:
+    config:
+    recursive: True

@@ -1,0 +1,1 @@
+//go:generate mockery --name=IUserService --dir=. --output=../../mocks --with-expecter=true

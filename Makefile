@@ -57,3 +57,6 @@ compose-test-up:
 
 compose-test-down:
 	docker-compose -f docker/compose.test.yml down
+
+generate-mock:
+	mockery
