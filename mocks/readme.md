@@ -1,5 +1,5 @@
 ### Example command:
 
 ```sh
-mockgen -source=internal/services/password_service.go -destination=mocks/mock_services/mock_password_service.go -package=mockservices
+mockgen -source=internal/services/email_service.go -destination=mocks/mock_services/mock_email_service.go -package=mockservices
 ```

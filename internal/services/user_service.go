@@ -37,7 +37,7 @@ func (s *userService) UpdateUser(ctx context.Context, user *models.User) (*model
 }
 
 func (s *userService) GetUserById(ctx context.Context, userId uuid.UUID) (*models.User, error) {
-	user, err := s.userRepo.GetById(ctx, userId)
+	user, err := s.userRepo.GetOne(ctx, repositories.GetOneParams{Id: &userId})
 	if err != nil {
 		return nil, err
 	}

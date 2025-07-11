@@ -15,13 +15,11 @@ func (ctrl *userController) Update(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user id"})
 		return
 	}
-
 	value, exist := c.Get("validatedBody")
 	if !exist {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Error"})
 		return
 	}
-
 	existingUser, err := ctrl.userService.GetUserById(c.Request.Context(), userId)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

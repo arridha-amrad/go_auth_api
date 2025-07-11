@@ -8,6 +8,8 @@ suite.Run() akan mencari method dengan nama spesifik:
 - TearDownTest()
 
 Urutan Eksekusi:
-
-go
-suite.Run() → SetupSuite() → (SetupTest() → TestA() → TearDownTest()) → (SetupTest() → TestB() → TearDownTest()) → TearDownSuite()
+suite.Run() →
+SetupSuite() →
+(SetupTest() → TestA() → TearDownTest()) →
+(SetupTest() → TestB() → TearDownTest()) →
+TearDownSuite()

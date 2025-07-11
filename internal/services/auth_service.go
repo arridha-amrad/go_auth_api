@@ -20,7 +20,7 @@ type IAuthService interface {
 	VerifyVerificationToken(params VerificationTokenData) (string, error)
 
 	// helpers (not exported)
-	generatePairToken() (TokenPair, error)
+	GeneratePairToken() (TokenPair, error)
 }
 
 func NewAuthService(redisService IRedisService, utils utils.IUtils, jwtService IJwtService) IAuthService {
@@ -39,21 +39,17 @@ func (s *authService) CreateAuthTokens(params CreateAuthTokenParams) (CreateAuth
 			return CreateAuthTokensResult{}, err
 		}
 	}
-
 	// delete old access token record from redis (refresh token behavior)
 	if params.OldTokenJti != nil {
 		if err := s.redisService.DeleteAccessToken(params.OldTokenJti.String()); err != nil {
 			return CreateAuthTokensResult{}, err
 		}
 	}
-
 	newJti := uuid.New()
-
-	refTokenPair, err := s.generatePairToken()
+	refTokenPair, err := s.GeneratePairToken()
 	if err != nil {
 		return CreateAuthTokensResult{}, err
 	}
-
 	if err := s.redisService.SaveRefreshToken(RefreshTokenData{
 		HashedToken: refTokenPair.Hashed,
 		UserId:      params.UserId.String(),
@@ -62,7 +58,6 @@ func (s *authService) CreateAuthTokens(params CreateAuthTokenParams) (CreateAuth
 		log.Println("failed to store refresh token in redis")
 		return CreateAuthTokensResult{}, err
 	}
-
 	accessToken, err := s.jwtService.Create(JWTPayload{
 		UserId:     params.UserId.String(),
 		Jti:        newJti.String(),
@@ -71,7 +66,6 @@ func (s *authService) CreateAuthTokens(params CreateAuthTokenParams) (CreateAuth
 	if err != nil {
 		return CreateAuthTokensResult{}, err
 	}
-
 	if err := s.redisService.SaveAccessToken(AccessTokenData{
 		AccessToken: accessToken,
 		UserId:      params.UserId.String(),
@@ -80,7 +74,6 @@ func (s *authService) CreateAuthTokens(params CreateAuthTokenParams) (CreateAuth
 		log.Println("failed to store access token in redis")
 		return CreateAuthTokensResult{}, err
 	}
-
 	return CreateAuthTokensResult{
 		RefreshToken: refTokenPair.Raw,
 		AccessToken:  accessToken,
@@ -89,16 +82,14 @@ func (s *authService) CreateAuthTokens(params CreateAuthTokenParams) (CreateAuth
 }
 
 func (s *authService) CreateVerificationToken(userId uuid.UUID) (VerificationTokenData, error) {
-	tokenPair, err := s.generatePairToken()
+	tokenPair, err := s.GeneratePairToken()
 	if err != nil {
 		return VerificationTokenData{}, err
 	}
-
 	code, err := s.utils.GenerateRandomBytes(4)
 	if err != nil {
 		return VerificationTokenData{}, err
 	}
-
 	if err := s.redisService.SaveVerificationToken(VerificationData{
 		Code:        code,
 		UserId:      userId.String(),
@@ -106,7 +97,6 @@ func (s *authService) CreateVerificationToken(userId uuid.UUID) (VerificationTok
 	}); err != nil {
 		return VerificationTokenData{}, err
 	}
-
 	return VerificationTokenData{
 		RawToken: tokenPair.Raw,
 		Code:     code,
@@ -125,7 +115,7 @@ func (s *authService) VerifyVerificationToken(params VerificationTokenData) (str
 }
 
 // Helpers
-func (s *authService) generatePairToken() (TokenPair, error) {
+func (s *authService) GeneratePairToken() (TokenPair, error) {
 	rawToken, err := s.utils.GenerateRandomBytes(32)
 	if err != nil {
 		return TokenPair{}, errors.New("failure on generating random bytes")
