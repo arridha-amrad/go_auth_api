@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"my-go-api/internal/constants"
 	"my-go-api/internal/dto"
 	"my-go-api/internal/validation"
 	"net/http"
@@ -22,6 +23,9 @@ type IValidationMiddleware interface {
 	Register(c *gin.Context)
 	UpdateUser(c *gin.Context)
 	VerifyNewAccount(c *gin.Context)
+	ForgotPassword(c *gin.Context)
+	ResetPassword(c *gin.Context)
+	ResendVerification(c *gin.Context)
 }
 
 func NewValidationMiddleware(validate *validator.Validate) IValidationMiddleware {
@@ -31,9 +35,22 @@ func NewValidationMiddleware(validate *validator.Validate) IValidationMiddleware
 func (m *validationMiddleware) runValidation(c *gin.Context, input any) {
 	log.Println(input)
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"errors": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"errors": "Required params are missing"})
 		c.Abort()
 		return
+	}
+
+	switch v := input.(type) {
+	case *dto.ResetPassword:
+		if v.Password != v.ConfirmPassword {
+			log.Println(v.Password)
+			log.Println(v.ConfirmPassword)
+			c.JSON(http.StatusBadRequest, gin.H{
+				"errors": "passwords do not match",
+			})
+			c.Abort()
+			return
+		}
 	}
 
 	if err := m.validate.Struct(input); err != nil {
@@ -55,24 +72,45 @@ func (m *validationMiddleware) runValidation(c *gin.Context, input any) {
 	}
 }
 
+func (m *validationMiddleware) ForgotPassword(c *gin.Context) {
+	var input dto.ForgotPassword
+	m.runValidation(c, &input)
+	c.Set(constants.VALIDATED_BODY, input)
+	c.Next()
+}
+
+func (m *validationMiddleware) ResendVerification(c *gin.Context) {
+	var input dto.ResendVerification
+	m.runValidation(c, &input)
+	c.Set(constants.VALIDATED_BODY, input)
+	c.Next()
+}
+
+func (m *validationMiddleware) ResetPassword(c *gin.Context) {
+	var input dto.ResetPassword
+	m.runValidation(c, &input)
+	c.Set(constants.VALIDATED_BODY, input)
+	c.Next()
+}
+
 func (m *validationMiddleware) VerifyNewAccount(c *gin.Context) {
 	var input dto.VerifyNewAccount
 	m.runValidation(c, &input)
-	c.Set("validatedBody", input)
+	c.Set(constants.VALIDATED_BODY, input)
 	c.Next()
 }
 
 func (m *validationMiddleware) Login(c *gin.Context) {
 	var input dto.Login
 	m.runValidation(c, &input)
-	c.Set("validatedBody", input)
+	c.Set(constants.VALIDATED_BODY, input)
 	c.Next()
 }
 
 func (m *validationMiddleware) Register(c *gin.Context) {
 	var input dto.Register
 	m.runValidation(c, &input)
-	c.Set("validatedBody", input)
+	c.Set(constants.VALIDATED_BODY, input)
 	c.Next()
 }
 
@@ -121,6 +159,6 @@ func (m *validationMiddleware) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	c.Set("validatedBody", input)
+	c.Set(constants.VALIDATED_BODY, input)
 	c.Next()
 }

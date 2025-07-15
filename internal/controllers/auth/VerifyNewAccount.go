@@ -13,7 +13,7 @@ import (
 )
 
 func (ctrl *authController) VerifyNewAccount(c *gin.Context) {
-	value, exist := c.Get("validatedBody")
+	value, exist := c.Get(constants.VALIDATED_BODY)
 	if !exist {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "UnValidated request body"})
 		return

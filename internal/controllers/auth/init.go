@@ -14,6 +14,9 @@ type IAuthController interface {
 	GetAuth(c *gin.Context)
 	Login(c *gin.Context)
 	VerifyNewAccount(c *gin.Context)
+	ForgotPassword(c *gin.Context)
+	ResetPassword(c *gin.Context)
+	ResendVerification(c *gin.Context)
 }
 
 type authController struct {

@@ -16,13 +16,13 @@ func (ctrl *authController) Logout(c *gin.Context) {
 		return
 	}
 
-	value, exist := c.Get("accessTokenPayload")
+	value, exist := c.Get(constants.ACCESS_TOKEN_PAYLOAD)
 	if !exist {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "validated body not exists"})
 		return
 	}
 
-	tokenPayload, ok := value.(services.AccessTokenData)
+	tokenPayload, ok := value.(services.JWTPayload)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user id"})
 		return

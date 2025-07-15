@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"log"
+	"my-go-api/internal/constants"
 	"my-go-api/internal/services"
 	"net/http"
 	"strings"
@@ -70,11 +70,7 @@ func (m *authMiddleware) Handler(c *gin.Context) {
 		return
 	}
 
-	log.Printf("payload Jti : %s", payload.Jti)
-	log.Printf("payload JwtVersion : %s", payload.JwtVersion)
-	log.Printf("payload UserId : %s", payload.UserId)
-
-	c.Set("accessTokenPayload", payload)
+	c.Set(constants.ACCESS_TOKEN_PAYLOAD, payload)
 
 	c.Next()
 }

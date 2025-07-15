@@ -47,13 +47,13 @@ db-migrate-force:
 	@migrate -path=$(MIGRATION_PATH) -database=$(DB_URL) force $(filter-out $@,$(MAKECMDGOALS))
 
 compose-dev-up:
-	docker-compose -f docker/compose.dev.yml up -d
+	docker compose -f docker/compose.dev.yml up -d
 
 compose-dev-down:
-	docker-compose -f docker/compose.dev.yml down
+	docker compose -f docker/compose.dev.yml down
 
 compose-test-up:
-	docker-compose -f docker/compose.test.yml up -d
+	docker compose -f docker/compose.test.yml up -d
 
 compose-test-down:
-	docker-compose -f docker/compose.test.yml down
+	docker compose -f docker/compose.test.yml down

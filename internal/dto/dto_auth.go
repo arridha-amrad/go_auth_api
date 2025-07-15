@@ -16,3 +16,17 @@ type VerifyNewAccount struct {
 	Code  string `json:"code" validate:"required,min=8,max=8"`
 	Token string `json:"token" validate:"required"`
 }
+
+type ForgotPassword struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+type ResetPassword struct {
+	Password        string `json:"password" validate:"required,strongPassword"`
+	ConfirmPassword string `json:"confirm_password" validate:"required"`
+	Token           string `json:"token" validate:"required"`
+}
+
+type ResendVerification struct {
+	Email string `json:"email" validate:"required,email"`
+}

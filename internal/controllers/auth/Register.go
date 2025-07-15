@@ -3,6 +3,7 @@ package auth
 import (
 	"fmt"
 	"log"
+	"my-go-api/internal/constants"
 	"my-go-api/internal/dto"
 	"my-go-api/internal/repositories"
 	"my-go-api/internal/services"
@@ -12,7 +13,7 @@ import (
 )
 
 func (ctrl *authController) Register(c *gin.Context) {
-	value, exist := c.Get("validatedBody")
+	value, exist := c.Get(constants.VALIDATED_BODY)
 	if !exist {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Error"})
 		return
@@ -63,7 +64,7 @@ func (ctrl *authController) Register(c *gin.Context) {
 
 	if err := ctrl.emailService.SendVerificationEmail(
 		services.SendEmailVerificationParams{
-			Name:  user.Name,
+			Name:  user.Username,
 			Email: user.Email,
 			Code:  data.Code,
 		},

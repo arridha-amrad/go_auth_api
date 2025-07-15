@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"my-go-api/internal/constants"
 	"my-go-api/internal/services"
 	"net/http"
 
@@ -10,7 +11,7 @@ import (
 
 func (ctrl *authController) GetAuth(c *gin.Context) {
 	// 1. Extract token payload from context
-	value, exist := c.Get("accessTokenPayload")
+	value, exist := c.Get(constants.ACCESS_TOKEN_PAYLOAD)
 	if !exist {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "validated body not exists"})
 		return

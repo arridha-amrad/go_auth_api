@@ -24,12 +24,50 @@ type IRedisService interface {
 	SaveVerificationToken(params VerificationData) error
 	DeleteVerificationToken(hashedToken string) error
 	GetVerificationToken(hashedToken string) (VerificationData, error)
+	// password reset
+	SavePasswordResetToken(params PasswordResetData) error
+	DeletePasswordResetToken(hashedToken string) error
+	GetPasswordResetToken(hashedToken string) (PasswordResetData, error)
 }
 
 func NewRedisService(redisRepository repositories.IRedisRepository) IRedisService {
 	return &redisService{
 		redisRepository: redisRepository,
 	}
+}
+
+func (s *redisService) SavePasswordResetToken(params PasswordResetData) error {
+	key := setPasswordResetKey(params.HashedToken)
+	err := s.redisRepository.HSet(key, map[string]any{
+		"token":  params.HashedToken,
+		"userId": params.UserId,
+	}, PasswordResetTokenTTL)
+	return err
+}
+
+func (s *redisService) DeletePasswordResetToken(hashedToken string) error {
+	key := setPasswordResetKey(hashedToken)
+	return s.redisRepository.Delete(key)
+}
+
+func (s *redisService) GetPasswordResetToken(hashedToken string) (PasswordResetData, error) {
+	key := setPasswordResetKey(hashedToken)
+	data, err := s.redisRepository.HGetAll(key)
+	if err != nil {
+		return PasswordResetData{}, err
+	}
+	token, ok := data["token"]
+	if !ok {
+		return PasswordResetData{}, errors.New("token not found")
+	}
+	userId, ok := data["userId"]
+	if !ok {
+		return PasswordResetData{}, errors.New("userId not found")
+	}
+	return PasswordResetData{
+		HashedToken: token,
+		UserId:      userId,
+	}, nil
 }
 
 func (s *redisService) SaveVerificationToken(params VerificationData) error {
@@ -145,6 +183,10 @@ func (s *redisService) GetAccessToken(jti string) (AccessTokenData, error) {
 
 // helpers
 
+func setPasswordResetKey(hashedToken string) string {
+	return fmt.Sprintf("resetPassword:%s", hashedToken)
+}
+
 func setAccessTokenKey(jti string) string {
 	return fmt.Sprintf("accessToken:%s", jti)
 }
@@ -154,7 +196,7 @@ func setRefreshTokenKey(hashedToken string) string {
 }
 
 func setVerificationKey(hashedToken string) string {
-	return fmt.Sprintf("account_verification:%s", hashedToken)
+	return fmt.Sprintf("accountVerification:%s", hashedToken)
 }
 
 type RefreshTokenData struct {
@@ -175,8 +217,14 @@ type VerificationData struct {
 	HashedToken string
 }
 
+type PasswordResetData struct {
+	HashedToken string
+	UserId      string
+}
+
 var (
-	AccessTokenTTL       = 1 * time.Hour
-	RefreshTokenTTL      = 24 * 7 * time.Hour
-	VerificationTokenTTL = 30 * time.Minute
+	AccessTokenTTL        = 1 * time.Hour
+	RefreshTokenTTL       = 24 * 7 * time.Hour
+	VerificationTokenTTL  = 30 * time.Minute
+	PasswordResetTokenTTL = 30 * time.Minute
 )
